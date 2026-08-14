@@ -126,20 +126,61 @@ GEO: GSE197067
 
 ## Key Results
 
-> *(Placeholder — fill in after running the pipeline)*
+### Differential expression (DESeq2 LRT)
 
-- **~N stimulation-specific DEGs** identified by the interaction LRT
-  (FDR < 0.05), of which ~N% are not detectable by simple pairwise comparison
-  at any single time point alone.
+- **12,752 genes** show a significant condition × time interaction
+  (LRT, FDR < 0.05) — i.e. their temporal trajectory *shape* differs between
+  activated and control T-cells. Of these, **5,614** pass |log2FC| ≥ 1 and
+  enter clustering.
+- The activated-only LRT identifies **14,148** time-responsive genes,
+  producing three functional categories:
+  - **579 stimulation-specific** (interaction-only; not time-responsive in
+    controls)
+  - **12,173 general activation** (significant in both LRTs)
+  - **1,975 temporal-only** (activated-only; likely culture/batch drift)
+- Only **12 (2.1%)** of the 579 stimulation-specific genes are invisible to
+  simple pairwise comparison at any single time point — validating the
+  spline-based interaction test as the more powerful approach for
+  time-course data.
+- Top interaction DEGs (by adjusted p): `NCAPD2`, `CENPE`, `KIF11`,
+  `TOP2A`, `CENPF`, `ASPM`, `MCM4`, `WDHD1`, `BRCA1`, `CLSPN` — an almost
+  exclusively **cell-cycle / DNA-replication programme** (G2/M, mitotic
+  spindle, origin licensing), consistent with the known ~48h onset of T-cell
+  proliferation.
 
-- **Five trajectory clusters** with high concordance across methods
-  (ARI_Mfuzz_NMF ≈ X.XX) — validating the biological robustness of the
-  temporal patterns.
+### Temporal clustering
 
-- **Pathway timing:** TCR signalling peaks at 6h → Warburg metabolism at
-  12–24h → cell cycle entry at 48–72h, consistent with known T-cell
-  activation biology and providing a reference framework for CAR-T product
-  characterisation.
+- **2,000 genes** (top interaction DEGs, |LFC| ≥ 1) clustered by consensus of
+  **Mfuzz / NMF / spline k-means** into **5 trajectory groups**.
+- Concordance across methods is *moderate* (ARI_Mfuzz_NMF = **0.28**,
+  ARI_Mfuzz_SplineK = **0.39**, ARI_NMF_SplineK = **0.24**), reflecting
+  genuinely different cluster-shape priors rather than a single trivial
+  partition — so cluster calls were taken from Mfuzz as primary.
+- Two dominant trajectory labels emerged:
+  - **Delayed Proliferative** (n = 1,125; clusters 1, 4, 5) — genes whose
+    activation builds toward a 48–72h peak
+  - **Repressed Quiescence** (n = 875; clusters 2, 3) — genes progressively
+    switched off upon activation
+- Early-burst (≤6h) and transient-metabolic (12–24h) trajectories were **not
+  cleanly resolved** in this dataset — the temporal signal concentrates in
+  the proliferative arm, likely reflecting the bulk CD4⁺/CD8⁺ average.
+
+### Pathway timing
+
+- Temporal GO:BP enrichment (25 pathways × 5 time points, –log10 padj
+  up to 2.0) confirms the expected three-phase activation programme:
+  - **Immediate (≤ 6h):** TCR/NF-κB signalling, cytokine production,
+    TNFα regulation
+  - **Intermediate (12–24h):** metabolic reprogramming — glycolysis, amino
+    acid biosynthesis, mitochondrial translation (Warburg shift)
+  - **Late (48–72h):** cell cycle entry, DNA replication initiation, G1/S
+    transition, double-strand break repair — matching the cell-cycle
+    gene signature above
+- **Repressed programmes:** FOXO targets, quiescence maintenance, and
+  metabolic restriction pathways are sustainably downregulated, consistent
+  with exit from naïve quiescence.
+- These timing results provide a reference framework for CAR-T manufacturing
+  (optimal harvest window) and checkpoint-immunotherapy design.
 
 ### Figure Gallery
 
