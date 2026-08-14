@@ -1,0 +1,104 @@
+name: Render and Deploy Quarto Report
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "analysis_report.qmd"
+      - "scripts/**"
+      - "_targets.R"
+      - ".github/workflows/render-report.yml"
+  workflow_dispatch:   # allow manual trigger
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  render-and-deploy:
+    runs-on: ubuntu-22.04
+
+    steps:
+      # ── Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── R setup ───────────────────────────────────────────────────────────
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "4.3.2"
+          use-public-rspm: true
+
+      # ── System dependencies ───────────────────────────────────────────────
+      - name: Install system libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libcurl4-openssl-dev libssl-dev libxml2-dev \
+            libfontconfig1-dev libcairo2-dev libharfbuzz-dev \
+            libfribidi-dev libfreetype6-dev libpng-dev \
+            libtiff5-dev libjpeg-dev pandoc
+
+      # ── Quarto setup ──────────────────────────────────────────────────────
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: "1.4.557"
+
+      # ── Restore renv ──────────────────────────────────────────────────────
+      - name: Cache renv packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.RENV_PATHS_ROOT }}
+          key: ${{ runner.os }}-renv-${{ hashFiles('**/renv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-renv-
+
+      - name: Restore R environment
+        run: |
+          Rscript -e "
+            if (!requireNamespace('renv', quietly=TRUE)) install.packages('renv')
+            renv::restore(confirm=FALSE)
+          "
+
+      # ── Check for cached targets store ───────────────────────────────────
+      - name: Cache targets store
+        uses: actions/cache@v4
+        with:
+          path: _targets/
+          key: ${{ runner.os }}-targets-${{ hashFiles('_targets.R','scripts/**') }}
+          restore-keys: |
+            ${{ runner.os }}-targets-
+
+      # ── Run pipeline (or use cache) ───────────────────────────────────────
+      # NOTE: GEO download requires internet access — available on GitHub runners.
+      # If data is too large, cache the data/ directory separately.
+      - name: Run targets pipeline
+        env:
+          NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}   # optional: higher GEO rate limit
+        run: |
+          Rscript -e "targets::tar_make()"
+
+      # ── Render Quarto ─────────────────────────────────────────────────────
+      - name: Render Quarto report
+        run: |
+          quarto render analysis_report.qmd --to html --output docs/index.html
+
+      # ── Deploy to GitHub Pages ────────────────────────────────────────────
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

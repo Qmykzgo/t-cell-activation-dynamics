@@ -1,0 +1,5 @@
+Sys.setenv(RENV_PROJECT = "")
+suppressWarnings(try(source("renv/activate.R"), silent = TRUE))
+library(targets)
+options(crayon.enabled = FALSE)
+tar_make()

@@ -1,0 +1,158 @@
+---
+title: "Exploratory Analysis — T-cell Activation Dynamics"
+subtitle: "Scratchpad notebook (not part of the main pipeline)"
+date: today
+format:
+  html:
+    toc: true
+    code-fold: true
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+  cache: true
+---
+
+```{r setup}
+library(targets)
+library(ggplot2)
+library(dplyr)
+library(DESeq2)
+
+# Load objects from targets store
+tar_load(c(sample_meta, counts_filtered, vst_matrix,
+           res_interaction, final_clusters))
+```
+
+## 1. Sanity Check: Count Distribution
+
+```{r count-distribution}
+# Histogram of library sizes
+lib_sizes <- colSums(counts_filtered$counts)
+
+data.frame(
+  sample_id  = names(lib_sizes),
+  lib_size   = lib_sizes
+) |>
+  dplyr::left_join(
+    tibble::rownames_to_column(sample_meta, "sample_id"),
+    by = "sample_id"
+  ) |>
+  ggplot(aes(x = reorder(sample_id, lib_size), y = lib_size / 1e6,
+             fill = condition)) +
+  geom_col() +
+  geom_hline(yintercept = median(lib_sizes)/1e6, linetype="dashed",
+             colour="grey40") +
+  coord_flip() +
+  scale_fill_manual(values = c(activated="#E64B35", control="#4DBBD5")) +
+  labs(title = "Library Sizes",
+       x = NULL, y = "Sequencing Depth (M reads)") +
+  theme_classic(12)
+```
+
+## 2. Quick Dispersion Plot
+
+```{r dispersion}
+# Load base dds
+tar_load(dds_base)
+DESeq2::plotDispEsts(dds_base,
+                     main = "DESeq2 Dispersion Estimates — Base Model")
+```
+
+## 3. Examine Individual Genes of Interest
+
+```{r gene-plots}
+# Candidate genes from T-cell biology literature
+candidate_genes <- c("IL2", "IFNG", "TNF", "CD69", "MKI67",
+                     "FOXO1", "SLC2A1", "LDHA", "CDK1", "SELL")
+
+vst_long <- vst_matrix[
+  intersect(candidate_genes, rownames(vst_matrix)), ,
+  drop = FALSE
+] |>
+  as.data.frame() |>
+  tibble::rownames_to_column("gene_id") |>
+  tidyr::pivot_longer(-gene_id, names_to = "sample_id", values_to = "vst") |>
+  dplyr::left_join(
+    tibble::rownames_to_column(sample_meta, "sample_id"),
+    by = "sample_id"
+  )
+
+ggplot(vst_long, aes(x = time_hours, y = vst,
+                     colour = condition, group = interaction(condition, donor))) +
+  geom_line(alpha = 0.7) +
+  geom_point(size = 2) +
+  scale_colour_manual(values = c(activated="#E64B35", control="#4DBBD5")) +
+  facet_wrap(~gene_id, scales = "free_y", ncol = 5) +
+  labs(title = "Canonical T-cell Activation Markers",
+       x = "Time (h)", y = "VST Expression") +
+  theme_classic(10) +
+  theme(strip.text = element_text(face="bold"))
+```
+
+## 4. Interaction LRT p-value Distribution
+
+```{r pval-hist}
+# Should show enrichment near 0 if there are true signal genes
+hist(res_interaction$pvalue,
+     breaks = 60,
+     col    = "#4DBBD5",
+     border = "white",
+     main   = "LRT p-value Distribution (Interaction Model)",
+     xlab   = "p-value",
+     ylab   = "Frequency")
+abline(h = nrow(res_interaction) / 60, col = "red", lty = 2)
+legend("topright", legend = "Expected uniform (null)", col="red",
+       lty=2, bty="n")
+```
+
+## 5. Mfuzz Membership Score Distribution
+
+```{r membership}
+tar_load(cluster_mfuzz)
+
+# Distribution of maximum membership scores (confidence of cluster assignment)
+max_mem <- apply(cluster_mfuzz$membership, 1, max)
+
+hist(max_mem, breaks = 40,
+     col    = "#F77F00",
+     border = "white",
+     main   = "Mfuzz — Max Membership Score Distribution",
+     xlab   = "Max membership (confidence of assignment)",
+     ylab   = "Gene count")
+abline(v = 0.5, col = "red", lty = 2)
+mtext(paste0("n genes with max > 0.5: ", sum(max_mem > 0.5)), side=3, cex=0.9)
+```
+
+## 6. Quick GSEA on Top Interaction DEGs
+
+```{r quick-gsea}
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+top_genes_symbol <- res_interaction |>
+  dplyr::filter(!is.na(padj), padj < 0.01) |>
+  dplyr::arrange(padj) |>
+  dplyr::slice_head(n = 200) |>
+  dplyr::pull(gene_id)
+
+entrez_ids <- tryCatch(
+  AnnotationDbi::mapIds(org.Hs.eg.db, keys = top_genes_symbol,
+                        keytype = "SYMBOL", column = "ENTREZID",
+                        multiVals = "first"),
+  error = function(e) NULL
+)
+
+if (!is.null(entrez_ids)) {
+  entrez_clean <- entrez_ids[!is.na(entrez_ids)]
+  ego_quick <- enrichGO(gene          = entrez_clean,
+                        OrgDb         = org.Hs.eg.db,
+                        ont           = "BP",
+                        pvalueCutoff  = 0.05,
+                        readable      = TRUE)
+  if (!is.null(ego_quick) && nrow(ego_quick@result) > 0) {
+    barplot(ego_quick, showCategory = 15,
+            title = "Top GO:BP — All Interaction DEGs (FDR<0.01)")
+  }
+}
+```
