@@ -90,9 +90,9 @@ Rade *et al.* (2023) *Genome Biology* — Pan T-cell Verification Set
 
 ## Repository
 
-**GitHub:** `github.com/YOUR_USERNAME/tcell-activation-dynamics`
+**GitHub:** `github.com/Qmykzgo/tcell-activation-dynamics`
 
-**Live Report:** `YOUR_USERNAME.github.io/tcell-activation-dynamics`
+**Live Report:** `Qmykzgo.github.io/tcell-activation-dynamics`
 
 **Stack:** R · DESeq2 · targets · Quarto · ggplot2 · Mfuzz · NMF ·
 clusterProfiler
